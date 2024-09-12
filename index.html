@@ -1,10 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Minimal Chat MiniDapp</title>
     <script type="text/javascript" src="mds.js"></script>
+    <script defer type="text/javascript" src="puresha1.js"></script>
+    <script type="text/javascript" src="service.js"></script>
+    <script defer type="text/javascript" src="txn.js"></script>
     <style>
       :root {
         --background: #0f172a;
@@ -20,7 +23,9 @@
       }
 
       body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
+          sans-serif;
         background-color: var(--background);
         color: var(--foreground);
         line-height: 1.6;
@@ -126,18 +131,87 @@
       }
 
       @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .post-vox-button {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        background-color: var(--primary);
+        color: #ffffff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 1000;
+      }
+
+      .popup {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: var(--background);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        z-index: 1001;
+      }
+
+      .popup textarea {
+        width: 100%;
+        height: 100px;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid var(--secondary);
+        background-color: rgba(100, 116, 139, 0.1);
+        color: var(--foreground);
+      }
+
+      .popup button {
+        padding: 10px 20px;
+        background-color: var(--primary);
+        color: #ffffff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
       }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <button class="post-vox-button" onclick="openPopup()">
+      Post a Vox Message
+    </button>
+
+    <div class="popup" id="voxPopup">
+      <textarea
+        id="voxMessage"
+        placeholder="Enter your Vox message..."
+      ></textarea>
+      <button onclick="submitVoxMessage()">Post</button>
+    </div>
+
     <div class="chat-container" id="chat-body">
       <!-- Messages will be inserted here by JavaScript -->
     </div>
     <div class="input-container">
-      <div class="loading-message" id="loading-message">Thinking... may take up to 20 seconds...</div>
-      <textarea class="chat-input" id="chat-input" rows="1" placeholder="Type your message here..."></textarea>
+      <div class="loading-message" id="loading-message">
+        Thinking... may take up to 20 seconds...
+      </div>
+      <textarea
+        class="chat-input"
+        id="chat-input"
+        rows="1"
+        placeholder="Type your message here..."
+      ></textarea>
       <button class="send-button" onclick="sendMessage()">Send</button>
     </div>
 
@@ -145,19 +219,25 @@
     <div id="notificationArea"></div>
 
     <script>
+      const SHOUTOUT_CATEGORY = "other";
+      const SHOUTOUT_TOPIC = "Minivox";
+
       // Initialize MDS
-      MDS.init(function(msg) {
+      MDS.init(function (msg) {
         if (msg.event === "inited") {
           console.log("MDS initialized");
-          
+
           // Create the chatbot_responses table if it doesn't exist
-          MDS.sql("CREATE TABLE IF NOT EXISTS chatbot_responses (id INT AUTO_INCREMENT PRIMARY KEY, timestamp DATETIME, response TEXT)", function(res) {
-            if (res.status) {
-              console.log("Table created successfully");
-            } else {
-              console.error("Error creating table:", res.error);
+          MDS.sql(
+            "CREATE TABLE IF NOT EXISTS chatbot_responses (id INT AUTO_INCREMENT PRIMARY KEY, timestamp DATETIME, response TEXT)",
+            function (res) {
+              if (res.status) {
+                console.log("Table created successfully");
+              } else {
+                console.error("Error creating table:", res.error);
+              }
             }
-          });
+          );
         } else if (msg.event === "NEWNOTIFICATION") {
           // Handle new notifications
           displayNotification(msg.data.message);
@@ -173,13 +253,13 @@
       function storeChatbotResponse(response) {
         const timestamp = new Date().toISOString();
         const jsonResponse = JSON.stringify(response);
-        
+
         // Escape single quotes in the JSON string to prevent SQL injection
         const escapedJsonResponse = jsonResponse.replace(/'/g, "''");
-        
+
         const sqlQuery = `INSERT INTO chatbot_responses (timestamp, response) VALUES ('${timestamp}', '${escapedJsonResponse}')`;
-        
-        MDS.sql(sqlQuery, function(res) {
+
+        MDS.sql(sqlQuery, function (res) {
           if (res.status) {
             console.log("Response stored successfully");
           } else {
@@ -222,7 +302,6 @@
 
           // Store the response in the database
           storeChatbotResponse(data.answer);
-
         } catch (error) {
           console.error("Error:", error);
           displayMessage(
@@ -243,25 +322,95 @@
       }
 
       function displayNotification(message) {
-        var notificationArea = document.getElementById('notificationArea');
-        var notificationElement = document.createElement('div');
+        var notificationArea = document.getElementById("notificationArea");
+        var notificationElement = document.createElement("div");
         notificationElement.textContent = message;
-        notificationElement.className = 'notification';
-        
+        notificationElement.className = "notification";
+
         // Add click event listener to remove the notification
-        notificationElement.addEventListener('click', function() {
-            notificationArea.removeChild(notificationElement);
+        notificationElement.addEventListener("click", function () {
+          notificationArea.removeChild(notificationElement);
         });
 
         notificationArea.appendChild(notificationElement);
       }
 
-      document.getElementById("chat-input").addEventListener("keypress", function(event) {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          sendMessage();
+      document
+        .getElementById("chat-input")
+        .addEventListener("keypress", function (event) {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+          }
+        });
+
+      function openPopup() {
+        document.getElementById("voxPopup").style.display = "block";
+        // Add event listener to close popup when clicking outside
+        document.addEventListener("click", closePopupOutside);
+      }
+
+      function closePopupOutside(event) {
+        const popup = document.getElementById("voxPopup");
+        if (!popup.contains(event.target) && event.target !== document.querySelector(".post-vox-button")) {
+          closePopup();
         }
-      });
+      }
+
+      function closePopup() {
+        document.getElementById("voxPopup").style.display = "none";
+        document.getElementById("voxMessage").value = ""; // Clear the textarea
+        document.removeEventListener("click", closePopupOutside);
+      }
+
+      function submitVoxMessage() {
+        const message = document.getElementById("voxMessage").value;
+        if (message) {
+          const msg = message.trim();
+          if (msg.length > 0 && msg.length <= 500) {
+            const randID = Math.floor(Math.random() * 1000000000);
+
+            //Set Post created time
+            const postedDate = new Date();
+            const created = postedDate.getTime();
+            window.sendTxnMessage(
+              SHOUTOUT_CATEGORY,
+              SHOUTOUT_TOPIC,
+              msg,
+              window.USER_NAME,
+              window.USER_PUBKEY,
+              window.USER_ADDRESS,
+              randID,
+              created,
+              (resp) => {
+                if (!resp.status && !resp.pending) {
+                  alert("Error sending transaction:\n" + resp.error);
+                  console.log("Error sending transaction: ", resp);
+                  return;
+                }
+
+                if (resp.pending) {
+                  alert(
+                    `Transaction is now pending.\nFor a better experience, consider using the application in WRITE mode.`
+                  );
+                  return;
+                }
+
+                const postOutput = resp.response.body.txn.outputs.find(
+                  (output) => output.address === window.SHOUTOUT_ADDRESS
+                );
+                const postId = postOutput.coinid;
+
+                if (!postId) {
+                  console.log("ERROR: undefined coinId");
+                  return;
+                }
+              }
+            );
+          }
+          closePopup(); // Use the new closePopup function instead of manually closing and clearing
+        }
+      }
     </script>
-</body>
+  </body>
 </html>
